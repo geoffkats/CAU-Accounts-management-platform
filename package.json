@@ -1,5 +1,8 @@
 {
     "$schema": "https://json.schemastore.org/package.json",
+    "name": "code-academy-accounting",
+    "version": "1.0.0",
+    "description": "Complete accounting system for Code Academy Uganda",
     "private": true,
     "type": "module",
     "scripts": {
