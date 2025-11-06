@@ -11,7 +11,7 @@ mount(function ($id) {
 });
 
 $asset = computed(function () {
-    return Asset::with(['category', 'program', 'assignedToStaff', 'maintenanceRecords', 'assignments'])
+    return Asset::with(['assignedToStaff', 'maintenanceRecords', 'assignments'])
         ->findOrFail($this->assetId);
 });
 
@@ -244,11 +244,11 @@ $delete = function () {
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <p class="text-sm text-gray-600 dark:text-gray-400 font-semibold">Category</p>
-                        <p class="text-gray-900 dark:text-white mt-1">{{ $this->asset->category->name }}</p>
+                        <p class="text-gray-900 dark:text-white mt-1">{{ $this->asset->category_label }}</p>
                     </div>
                     <div>
-                        <p class="text-sm text-gray-600 dark:text-gray-400 font-semibold">Program</p>
-                        <p class="text-gray-900 dark:text-white mt-1">{{ $this->asset->program?->name ?? 'N/A' }}</p>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 font-semibold">Funding Source</p>
+                        <p class="text-gray-900 dark:text-white mt-1">{{ $this->asset->funding_source_label }}</p>
                     </div>
                 </div>
                 

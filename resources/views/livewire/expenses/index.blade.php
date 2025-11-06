@@ -19,11 +19,15 @@ new class extends Component {
 
     public function with(): array
     {
-        $query = Expense::with(['program', 'vendor', 'account'])
+        $query = Expense::with(['program', 'vendor', 'staff', 'account'])
             ->when($this->search, function ($q) {
                 $q->where('description', 'like', '%' . $this->search . '%')
                   ->orWhereHas('vendor', function ($q) {
                       $q->where('name', 'like', '%' . $this->search . '%');
+                  })
+                  ->orWhereHas('staff', function ($q) {
+                      $q->where('first_name', 'like', '%' . $this->search . '%')
+                        ->orWhere('last_name', 'like', '%' . $this->search . '%');
                   });
             })
             ->when($this->statusFilter !== 'all', function ($q) {
@@ -198,8 +202,8 @@ new class extends Component {
                     <tr>
                         <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Date</th>
                         <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Description</th>
-                        <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Category</th>
-                        <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Vendor</th>
+                        <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Account</th>
+                        <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Paid To</th>
                         <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Program</th>
                         <th class="px-6 py-4 text-right text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Amount</th>
                         <th class="px-6 py-4 text-center text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Payment Status</th>
@@ -215,17 +219,34 @@ new class extends Component {
                         </td>
                         <td class="px-6 py-4">
                             <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ $expense->description }}</div>
+                            @if($expense->category)
+                                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">🏷️ {{ $expense->category }}</div>
+                            @endif
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
-                            <span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
-                                {{ $expense->category ?: 'Uncategorized' }}
-                            </span>
+                            @if($expense->account)
+                                <div class="text-sm font-medium text-gray-900 dark:text-white">{{ $expense->account->code }}</div>
+                                <div class="text-xs text-gray-500 dark:text-gray-400">{{ $expense->account->name }}</div>
+                            @else
+                                <span class="text-xs text-gray-400">N/A</span>
+                            @endif
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                            {{ $expense->vendor->name }}
+                            @if($expense->vendor)
+                                {{ $expense->vendor->name }}
+                            @elseif($expense->staff)
+                                {{ $expense->staff->first_name }} {{ $expense->staff->last_name }}
+                                <span class="text-xs text-gray-500">(Staff)</span>
+                            @else
+                                <span class="text-gray-400">N/A</span>
+                            @endif
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                            {{ $expense->program->name }}
+                            @if($expense->program)
+                                {{ $expense->program->name }}
+                            @else
+                                <span class="text-gray-400 italic">No Program</span>
+                            @endif
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-right">
                             <div class="text-sm font-bold text-red-600 dark:text-red-400">
@@ -272,6 +293,13 @@ new class extends Component {
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             <div class="flex items-center justify-end gap-2">
+                                <a href="{{ route('expenses.edit', $expense->id) }}"
+                                   class="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                                   title="Edit">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5h2m-1 14v-4m-5 4h10a2 2 0 002-2v-5.586a1 1 0 00-.293-.707l-6.414-6.414a1 1 0 00-1.414 0L5.293 9.707A1 1 0 005 10.414V17a2 2 0 002 2z" />
+                                    </svg>
+                                </a>
                                 @if($expense->payment_status !== 'paid')
                                     <button wire:click="openPaymentModal({{ $expense->id }})"
                                             class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"

@@ -2,7 +2,6 @@
 
 use function Livewire\Volt\{state, mount, computed};
 use App\Models\Asset;
-use App\Models\AssetCategory;
 use App\Models\Program;
 use App\Models\Staff;
 use Illuminate\Support\Facades\DB;
@@ -14,7 +13,7 @@ new class extends Component {
 
     public ?int $assetId = null;
     public $asset_category_id = '';
-    public $program_id = '';
+    public $funding_source = '';
     public $asset_tag = '';
     public $name = '';
     public $description = '';
@@ -44,7 +43,7 @@ new class extends Component {
             $asset = Asset::findOrFail($id);
             
             $this->asset_category_id = $asset->asset_category_id;
-            $this->program_id = $asset->program_id;
+            $this->funding_source = $asset->funding_source;
             $this->asset_tag = $asset->asset_tag;
             $this->name = $asset->name;
             $this->description = $asset->description;
@@ -76,33 +75,16 @@ new class extends Component {
         return AssetCategory::active()->orderBy('name')->get();
     }
 
-    public function getProgramsProperty()
-    {
-        return Program::orderBy('name')->get();
-    }
-
     public function getStaffProperty()
     {
         return Staff::active()->orderBy('last_name')->get();
     }
 
-    public function onCategoryChange()
-    {
-        if ($this->asset_category_id) {
-            $category = AssetCategory::find($this->asset_category_id);
-            if ($category) {
-                $this->depreciation_rate = $category->default_depreciation_rate;
-                $this->depreciation_method = $category->depreciation_method;
-                $this->useful_life_years = $category->default_useful_life_years;
-            }
-        }
-    }
-
     public function save()
     {
         $validated = $this->validate([
-        'asset_category_id' => 'required|exists:asset_categories,id',
-        'program_id' => 'nullable|exists:programs,id',
+        'asset_category_id' => 'required|string|in:land_buildings,motor_vehicles,ict_equipment,furniture_fittings,office_equipment,machinery_tools,intangible_assets,leasehold_improvements',
+        'funding_source' => 'required|string|in:owned,donated,leased,grant_funded',
         'asset_tag' => 'required|string|max:50|unique:assets,asset_tag,' . $this->assetId,
         'name' => 'required|string|max:255',
         'description' => 'nullable|string',
@@ -133,8 +115,8 @@ new class extends Component {
     if (empty($validated['assigned_to_student'])) {
         $validated['assigned_to_student'] = null;
     }
-    if (empty($validated['program_id'])) {
-        $validated['program_id'] = null;
+    if (empty($validated['warranty_expiry'])) {
+        $validated['warranty_expiry'] = null;
     }
     if (empty($validated['asset_category_id'])) {
         $validated['asset_category_id'] = null;
@@ -221,12 +203,16 @@ new class extends Component {
                             Category <span class="text-red-500">*</span>
                         </label>
                         <select wire:model.live="asset_category_id"
-                                wire:change="onCategoryChange"
                                 class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white">
                             <option value="">Select Category</option>
-                            @foreach($this->categories as $category)
-                                <option value="{{ $category->id }}">{{ $category->name }}</option>
-                            @endforeach
+                            <option value="land_buildings">Land & Buildings</option>
+                            <option value="motor_vehicles">Motor Vehicles</option>
+                            <option value="ict_equipment">ICT Equipment</option>
+                            <option value="furniture_fittings">Furniture & Fittings</option>
+                            <option value="office_equipment">Office Equipment</option>
+                            <option value="machinery_tools">Machinery / Tools</option>
+                            <option value="intangible_assets">Intangible Assets</option>
+                            <option value="leasehold_improvements">Leasehold Improvements</option>
                         </select>
                         @error('asset_category_id')
                             <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
@@ -235,16 +221,17 @@ new class extends Component {
 
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                            Program
+                            Funding Source <span class="text-red-500">*</span>
                         </label>
-                        <select wire:model="program_id"
+                        <select wire:model="funding_source"
                                 class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white">
-                            <option value="">No Program</option>
-                            @foreach($this->programs as $program)
-                                <option value="{{ $program->id }}">{{ $program->name }}</option>
-                            @endforeach
+                            <option value="">Select Funding Source</option>
+                            <option value="owned">Owned Assets</option>
+                            <option value="donated">Donated Assets</option>
+                            <option value="leased">Leased Assets</option>
+                            <option value="grant_funded">Grant-funded Assets</option>
                         </select>
-                        @error('program_id')
+                        @error('funding_source')
                             <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                         @enderror
                     </div>

@@ -3,6 +3,7 @@
 use App\Models\Expense;
 use App\Models\Program;
 use App\Models\Vendor;
+use App\Models\Staff;
 use App\Models\Account;
 use App\Models\Currency;
 use App\Models\ExchangeRate;
@@ -14,18 +15,21 @@ new class extends Component {
 
     public ?int $program_id = null;
     public ?int $vendor_id = null;
+    public ?int $staff_id = null;
     public ?int $account_id = null;
     public string $expense_date = '';
     // Note: avoid strict typing for Livewire-bound numeric props to prevent hydration issues
     public $amount = 0;
+    public $charges = 0;
     public string $currency = 'UGX';
     public string $status = 'pending';
     public string $payment_status = 'unpaid';
     public string $payment_reference = '';
     public string $category = '';
-    public string $description = '';
+    public ?string $description = null;
     public $receipt = null;
     public ?float $convertedAmount = null;
+    public string $payee_type = 'vendor'; // 'vendor' or 'staff'
 
     public function mount(): void
     {
@@ -37,6 +41,7 @@ new class extends Component {
         return [
             'programs' => Program::where('status', '!=', 'cancelled')->orderBy('name')->get(),
             'vendors' => Vendor::orderBy('name')->get(),
+            'staffMembers' => Staff::where('is_active', true)->orderBy('first_name')->get(),
             'expenseAccounts' => Account::where('type', 'expense')->orderBy('code')->get(),
             'currencies' => Currency::getActive(),
             'baseCurrency' => Currency::getBaseCurrency(),
@@ -45,7 +50,7 @@ new class extends Component {
 
     public function updated($property, $value): void
     {
-        if ($property === 'amount' || $property === 'currency') {
+        if ($property === 'amount' || $property === 'currency' || $property === 'charges') {
             $this->updateConversion();
         }
     }
@@ -53,13 +58,15 @@ new class extends Component {
     private function updateConversion(): void
     {
         $amt = (float) ($this->amount ?: 0);
-        if ($amt > 0 && $this->currency) {
+        $charges = (float) ($this->charges ?: 0);
+        $total = $amt + $charges;
+        if ($total > 0 && $this->currency) {
             $baseCurrency = Currency::getBaseCurrency();
             if ($baseCurrency && $this->currency !== $baseCurrency->code) {
                 $rate = ExchangeRate::getRate($this->currency, $baseCurrency->code);
-                $this->convertedAmount = $rate ? $amt * $rate : null;
+                $this->convertedAmount = $rate ? $total * $rate : null;
             } else {
-                $this->convertedAmount = $amt;
+                $this->convertedAmount = $total;
             }
         } else {
             $this->convertedAmount = null;
@@ -71,14 +78,24 @@ new class extends Component {
         // Cast select values to integers prior to validation (Livewire sends strings)
         $this->program_id = $this->program_id ? (int) $this->program_id : null;
         $this->vendor_id = $this->vendor_id ? (int) $this->vendor_id : null;
+        $this->staff_id = $this->staff_id ? (int) $this->staff_id : null;
         $this->account_id = $this->account_id ? (int) $this->account_id : null;
 
+        // Clear the one that's not selected based on payee_type
+        if ($this->payee_type === 'vendor') {
+            $this->staff_id = null;
+        } else {
+            $this->vendor_id = null;
+        }
+
         $validated = $this->validate([
-            'program_id' => ['required', 'exists:programs,id'],
-            'vendor_id' => ['required', 'exists:vendors,id'],
+            'program_id' => ['nullable', 'exists:programs,id'],
+            'vendor_id' => ['nullable', 'required_if:payee_type,vendor', 'exists:vendors,id'],
+            'staff_id' => ['nullable', 'required_if:payee_type,staff', 'exists:staff,id'],
             'account_id' => ['required', 'exists:accounts,id'],
             'expense_date' => ['required', 'date'],
             'amount' => ['required', 'numeric', 'min:0'],
+            'charges' => ['nullable', 'numeric', 'min:0'],
             'currency' => ['required', 'string', 'exists:currencies,code'],
             'status' => ['required', 'in:pending,paid'],
             'payment_status' => ['required', 'in:unpaid,paid,partial'],
@@ -182,23 +199,57 @@ new class extends Component {
                     @error('amount')
                         <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                     @enderror
-                    @if($convertedAmount && $currency !== $baseCurrency->code)
-                        <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
-                            ≈ {{ $baseCurrency->symbol }} {{ number_format($convertedAmount, 0) }} (Base currency)
-                        </p>
-                    @endif
+                </div>
+
+                <!-- Charges -->
+                <div>
+                    <label for="charges" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                        Charges ({{ $currency }})
+                    </label>
+                    <input type="number" 
+                           id="charges"
+                           wire:model.live="charges"
+                           step="0.01"
+                           min="0"
+                           placeholder="0.00"
+                           class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white">
+                    @error('charges')
+                        <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                    @enderror
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Optional additional charges (bank fees, processing fees, etc.)
+                    </p>
+                </div>
+
+                <!-- Total (Computed) -->
+                @php
+                    $total = ((float)($amount ?: 0)) + ((float)($charges ?: 0));
+                @endphp
+                <div class="md:col-span-2">
+                    <div class="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">Total Expense Amount:</span>
+                            <span class="text-xl font-bold text-blue-600 dark:text-blue-400">
+                                {{ $currency }} {{ number_format($total, 2) }}
+                            </span>
+                        </div>
+                        @if($convertedAmount && $currency !== $baseCurrency->code)
+                            <p class="mt-2 text-xs text-blue-600 dark:text-blue-400 text-right">
+                                ≈ {{ $baseCurrency->symbol }} {{ number_format($convertedAmount, 0) }} (Base currency)
+                            </p>
+                        @endif
+                    </div>
                 </div>
 
                 <!-- Program -->
                 <div>
                     <label for="program_id" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                        Program <span class="text-red-500">*</span>
+                        Program
                     </label>
                         <select id="program_id"
                             wire:model.defer="program_id"
-                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white"
-                            required>
-                        <option value="">Select Program</option>
+                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white">
+                        <option value="">Select Program (Optional)</option>
                         @foreach($programs as $program)
                             <option value="{{ $program->id }}">{{ $program->name }}</option>
                         @endforeach
@@ -209,6 +260,21 @@ new class extends Component {
                 </div>
 
                 <!-- Vendor -->
+                <div>
+                    <label for="payee_type" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                        Pay To <span class="text-red-500">*</span>
+                    </label>
+                    <select id="payee_type"
+                            wire:model.live="payee_type"
+                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white"
+                            required>
+                        <option value="vendor">Vendor</option>
+                        <option value="staff">Staff Member</option>
+                    </select>
+                </div>
+
+                <!-- Vendor Selection (shown when payee_type is 'vendor') -->
+                @if($payee_type === 'vendor')
                 <div>
                     <label for="vendor_id" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                         Vendor <span class="text-red-500">*</span>
@@ -229,9 +295,34 @@ new class extends Component {
                         <a href="{{ route('vendors.create') }}" class="text-red-600 hover:underline">+ Add new vendor</a>
                     </p>
                 </div>
+                @endif
+
+                <!-- Staff Selection (shown when payee_type is 'staff') -->
+                @if($payee_type === 'staff')
+                <div>
+                    <label for="staff_id" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                        Staff Member <span class="text-red-500">*</span>
+                    </label>
+                        <select id="staff_id"
+                            wire:model.defer="staff_id"
+                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white"
+                            required>
+                        <option value="">Select Staff Member</option>
+                        @foreach($staffMembers as $staff)
+                            <option value="{{ $staff->id }}">{{ $staff->first_name }} {{ $staff->last_name }} ({{ $staff->employee_number }})</option>
+                        @endforeach
+                    </select>
+                    @error('staff_id')
+                        <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                    @enderror
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        <a href="{{ route('staff.create') }}" class="text-red-600 hover:underline">+ Add new staff</a>
+                    </p>
+                </div>
+                @endif
 
                 <!-- Expense Account -->
-                <div>
+                <div class="md:col-span-2">
                     <label for="account_id" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                         Expense Account <span class="text-red-500">*</span>
                     </label>
@@ -240,39 +331,114 @@ new class extends Component {
                             class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white"
                             required>
                         <option value="">Select Account</option>
-                        @foreach($expenseAccounts as $account)
-                            <option value="{{ $account->id }}">{{ $account->code }} - {{ $account->name }}</option>
-                        @endforeach
+                        
+                        <optgroup label="🏢 5000 - Administrative Expenses">
+                            @foreach($expenseAccounts->filter(fn($a) => $a->code >= 5000 && $a->code < 5100) as $account)
+                                <option value="{{ $account->id }}">{{ $account->code }} - {{ $account->name }}</option>
+                            @endforeach
+                        </optgroup>
+                        
+                        <optgroup label="👥 5100 - Staff & Facilitator Costs">
+                            @foreach($expenseAccounts->filter(fn($a) => $a->code >= 5100 && $a->code < 5200) as $account)
+                                <option value="{{ $account->id }}">{{ $account->code }} - {{ $account->name }}</option>
+                            @endforeach
+                        </optgroup>
+                        
+                        <optgroup label="📚 5200 - Program Expenses">
+                            @foreach($expenseAccounts->filter(fn($a) => $a->code >= 5200 && $a->code < 5300) as $account)
+                                <option value="{{ $account->id }}">{{ $account->code }} - {{ $account->name }}</option>
+                            @endforeach
+                        </optgroup>
+                        
+                        <optgroup label="📢 5300 - Marketing & Outreach">
+                            @foreach($expenseAccounts->filter(fn($a) => $a->code >= 5300 && $a->code < 5400) as $account)
+                                <option value="{{ $account->id }}">{{ $account->code }} - {{ $account->name }}</option>
+                            @endforeach
+                        </optgroup>
+                        
+                        <optgroup label="🚗 5400 - Transport & Travel">
+                            @foreach($expenseAccounts->filter(fn($a) => $a->code >= 5400 && $a->code < 5500) as $account)
+                                <option value="{{ $account->id }}">{{ $account->code }} - {{ $account->name }}</option>
+                            @endforeach
+                        </optgroup>
+                        
+                        <optgroup label="💻 5500 - ICT & Technical Infrastructure">
+                            @foreach($expenseAccounts->filter(fn($a) => $a->code >= 5500 && $a->code < 5600) as $account)
+                                <option value="{{ $account->id }}">{{ $account->code }} - {{ $account->name }}</option>
+                            @endforeach
+                        </optgroup>
+                        
+                        <optgroup label="🎉 5600 - Events & Competitions">
+                            @foreach($expenseAccounts->filter(fn($a) => $a->code >= 5600 && $a->code < 5700) as $account)
+                                <option value="{{ $account->id }}">{{ $account->code }} - {{ $account->name }}</option>
+                            @endforeach
+                        </optgroup>
+                        
+                        <optgroup label="⚖️ 5700 - Professional Services">
+                            @foreach($expenseAccounts->filter(fn($a) => $a->code >= 5700 && $a->code < 5800) as $account)
+                                <option value="{{ $account->id }}">{{ $account->code }} - {{ $account->name }}</option>
+                            @endforeach
+                        </optgroup>
+                        
+                        <optgroup label="🏷️ 5800 - Asset & Depreciation">
+                            @foreach($expenseAccounts->filter(fn($a) => $a->code >= 5800 && $a->code < 5900) as $account)
+                                <option value="{{ $account->id }}">{{ $account->code }} - {{ $account->name }}</option>
+                            @endforeach
+                        </optgroup>
+                        
+                        <optgroup label="💰 5900 - Taxes & Statutory Payments">
+                            @foreach($expenseAccounts->filter(fn($a) => $a->code >= 5900 && $a->code < 6000) as $account)
+                                <option value="{{ $account->id }}">{{ $account->code }} - {{ $account->name }}</option>
+                            @endforeach
+                        </optgroup>
+                        
+                        <optgroup label="🤝 6000 - Miscellaneous">
+                            @foreach($expenseAccounts->filter(fn($a) => $a->code >= 6000 && $a->code < 6100) as $account)
+                                <option value="{{ $account->id }}">{{ $account->code }} - {{ $account->name }}</option>
+                            @endforeach
+                        </optgroup>
                     </select>
                     @error('account_id')
                         <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                     @enderror
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Select the appropriate chart of accounts code for this expense
+                    </p>
                 </div>
 
-                <!-- Category -->
-                <div>
+                <!-- Additional Category/Tags -->
+                <div class="md:col-span-2">
                     <label for="category" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                        Category
+                        Additional Category / Tags
+                        <span class="text-xs font-normal text-gray-500">(Optional)</span>
                     </label>
                     <input type="text" 
                            id="category"
-                           wire:model="category"
-                           placeholder="e.g., Office Supplies, Travel"
-                           list="categories"
+                           wire:model.defer="category"
+                           list="expense-categories"
+                           placeholder="Add custom tags, cost center, or additional categorization..."
                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white">
-                    <datalist id="categories">
-                        <option value="Office Supplies">
-                        <option value="Travel">
-                        <option value="Utilities">
-                        <option value="Marketing">
-                        <option value="Professional Fees">
-                        <option value="Training">
-                        <option value="Equipment">
-                        <option value="Rent">
+                    <datalist id="expense-categories">
+                        <option value="Q1 Program">Quarter tags</option>
+                        <option value="Q2 Program">Quarter tags</option>
+                        <option value="Q3 Program">Quarter tags</option>
+                        <option value="Q4 Program">Quarter tags</option>
+                        <option value="Innovation Hub">Project tags</option>
+                        <option value="Youth Training">Project tags</option>
+                        <option value="Community Outreach">Project tags</option>
+                        <option value="Research">Project tags</option>
+                        <option value="Urgent">Priority tags</option>
+                        <option value="Recurring">Priority tags</option>
+                        <option value="One-time">Priority tags</option>
+                        <option value="Grant-funded">Funding tags</option>
+                        <option value="Self-funded">Funding tags</option>
                     </datalist>
                     @error('category')
                         <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                     @enderror
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Optional field for project names, cost centers, or custom tags for internal tracking
+                    </p>
                 </div>
 
                 <!-- Payment Status -->
@@ -304,7 +470,7 @@ new class extends Component {
                     </label>
                     <input type="text" 
                            id="payment_reference"
-                           wire:model="payment_reference"
+                           wire:model.defer="payment_reference"
                            placeholder="Check #, Transaction ID, etc."
                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white">
                     @error('payment_reference')
@@ -346,7 +512,7 @@ new class extends Component {
                     Description <span class="text-red-500">*</span>
                 </label>
                 <textarea id="description"
-                          wire:model="description"
+                          wire:model.defer="description"
                           rows="4"
                           placeholder="Describe the expense..."
                           class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white resize-none"
@@ -359,13 +525,17 @@ new class extends Component {
             <!-- Action Buttons -->
             <div class="flex gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <button type="submit"
-                        class="flex-1 px-6 py-3 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl hover:shadow-xl transition-all duration-200 font-semibold"
+                        class="flex-1 px-6 py-3 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl hover:shadow-xl transition-all duration-200 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                         wire:loading.attr="disabled">
-                    <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" wire:loading.remove>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                     </svg>
+                    <svg class="w-5 h-5 inline mr-2 animate-spin" fill="none" viewBox="0 0 24 24" wire:loading>
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
                     <span wire:loading.remove>Create Expense</span>
-                    <span wire:loading>Uploading...</span>
+                    <span wire:loading>Processing...</span>
                 </button>
                 <a href="{{ route('expenses.index') }}"
                    class="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200 font-semibold">
@@ -373,5 +543,21 @@ new class extends Component {
                 </a>
             </div>
         </form>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div wire:loading wire:target="save" class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 w-full max-w-sm">
+            <div class="flex flex-col items-center gap-4">
+                <svg class="w-16 h-16 text-red-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <div class="text-center">
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-1">Creating Expense...</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Please wait while we process your request</p>
+                </div>
+            </div>
+        </div>
     </div>
 </div>

@@ -21,6 +21,8 @@ Route::middleware(['auth', 'role:admin,accountant'])->group(function () {
     Volt::route('accounts', 'accounts.index')->name('accounts.index');
     Volt::route('accounts/create', 'accounts.create')->name('accounts.create');
     Volt::route('accounts/{id}/edit', 'accounts.edit')->name('accounts.edit');
+    // Opening Balances Wizard
+    Volt::route('accounts/opening-balances', 'accounts.opening-balances')->name('accounts.opening-balances');
     
     // Sales / Income
     Volt::route('sales', 'sales.index')->name('sales.index');
@@ -30,6 +32,7 @@ Route::middleware(['auth', 'role:admin,accountant'])->group(function () {
     // Expenses
     Volt::route('expenses', 'expenses.index')->name('expenses.index');
     Volt::route('expenses/create', 'expenses.create')->name('expenses.create');
+    Volt::route('expenses/{id}/edit', 'expenses.edit')->name('expenses.edit');
     
     // Vendors
     Volt::route('vendors', 'vendors.index')->name('vendors.index');
@@ -97,10 +100,86 @@ Route::middleware(['auth', 'role:admin,accountant'])->group(function () {
     Volt::route('scholarships/{id}/edit', 'scholarships.create')->name('scholarships.edit');
     
     // Reports
+    Volt::route('general-ledger', 'general-ledger')->name('general-ledger');
+    Volt::route('reports/balance-sheet', 'balance-sheet')->name('reports.balance-sheet');
     Volt::route('reports/profit-loss', 'reports.profit-loss')->name('reports.profit-loss');
     Volt::route('reports/expense-breakdown', 'reports.expense-breakdown')->name('reports.expense-breakdown');
     Volt::route('reports/sales-by-program', 'reports.sales-by-program')->name('reports.sales-by-program');
     Volt::route('reports/currency-conversion', 'reports.currency-conversion')->name('reports.currency-conversion');
+    
+    // Balance Sheet Print View
+    Route::get('reports/balance-sheet/print', function () {
+        $asOfDate = request('as_of_date') ?: now()->toDateString();
+        $showComparative = request('show_comparative', '1') === '1';
+        
+        $start = '1900-01-01';
+        $end = $asOfDate;
+        $settings = \App\Models\CompanySetting::get();
+        $asOfLabel = \Carbon\Carbon::parse($end)->format($settings->date_format ?? 'Y-m-d');
+        $priorEnd = \Carbon\Carbon::parse($end)->subYear()->toDateString();
+        $priorLabel = \Carbon\Carbon::parse($priorEnd)->format($settings->date_format ?? 'Y-m-d');
+
+        $assets = \App\Models\Account::active()->ofType('asset')->orderBy('code')->get();
+        $liabilities = \App\Models\Account::active()->ofType('liability')->orderBy('code')->get();
+        $equity = \App\Models\Account::active()->ofType('equity')->orderBy('code')->get();
+        $income = \App\Models\Account::active()->ofType('income')->orderBy('code')->get();
+        $expenses = \App\Models\Account::active()->ofType('expense')->orderBy('code')->get();
+
+        $assetRows = $assets->map(fn($a) => [
+            'code' => $a->code, 'name' => $a->name,
+            'balance' => round($a->calculateBalance($start, $end), 2),
+            'prior' => round($a->calculateBalance($start, $priorEnd), 2),
+        ])->filter(fn($r) => abs($r['balance']) > 0.0001 || abs($r['prior']) > 0.0001)->values();
+
+        $liabilityRows = $liabilities->map(fn($a) => [
+            'code' => $a->code, 'name' => $a->name,
+            'balance' => round($a->calculateBalance($start, $end), 2),
+            'prior' => round($a->calculateBalance($start, $priorEnd), 2),
+        ])->filter(fn($r) => abs($r['balance']) > 0.0001 || abs($r['prior']) > 0.0001)->values();
+
+        $equityRows = $equity->map(fn($a) => [
+            'code' => $a->code, 'name' => $a->name,
+            'balance' => round($a->calculateBalance($start, $end), 2),
+            'prior' => round($a->calculateBalance($start, $priorEnd), 2),
+        ])->filter(fn($r) => abs($r['balance']) > 0.0001 || abs($r['prior']) > 0.0001)->values();
+
+        $totalIncome = round($income->sum(fn($a) => $a->calculateBalance($start, $end)), 2);
+        $totalExpenses = round($expenses->sum(fn($a) => $a->calculateBalance($start, $end)), 2);
+        $netIncome = round($totalIncome - $totalExpenses, 2);
+
+        $priorIncome = round($income->sum(fn($a) => $a->calculateBalance($start, $priorEnd)), 2);
+        $priorExpenses = round($expenses->sum(fn($a) => $a->calculateBalance($start, $priorEnd)), 2);
+        $netIncomePrior = round($priorIncome - $priorExpenses, 2);
+
+        $totalAssets = round(array_sum(array_column($assetRows->all(), 'balance')), 2);
+        $totalLiabilities = round(array_sum(array_column($liabilityRows->all(), 'balance')), 2);
+        $totalEquity = round(array_sum(array_column($equityRows->all(), 'balance')), 2);
+        $equityWithEarnings = round($totalEquity + $netIncome, 2);
+
+        $totalAssetsPrior = round(array_sum(array_column($assetRows->all(), 'prior')), 2);
+        $totalLiabilitiesPrior = round(array_sum(array_column($liabilityRows->all(), 'prior')), 2);
+        $totalEquityPrior = round(array_sum(array_column($equityRows->all(), 'prior')), 2);
+        $equityWithEarningsPrior = round($totalEquityPrior + $netIncomePrior, 2);
+
+        $baseCurrency = \App\Models\Currency::getBaseCurrency();
+
+        return view('print.balance-sheet', compact(
+            'assetRows','liabilityRows','equityRows',
+            'totalAssets','totalLiabilities','totalEquity','netIncome','equityWithEarnings',
+            'totalAssetsPrior','totalLiabilitiesPrior','totalEquityPrior','netIncomePrior','equityWithEarningsPrior',
+            'baseCurrency','settings','asOfLabel','priorLabel','showComparative'
+        ));
+    })->name('reports.balance-sheet.print');
+    
+    // General Ledger & Accounting
+    Volt::route('general-ledger', 'general-ledger-detailed')->name('general-ledger');
+    Volt::route('trial-balance', 'trial-balance')->name('trial-balance');
+    Volt::route('account-statement/{id}', 'account-statement')->name('account-statement');
+    
+    // Journal Entries
+    Volt::route('journal-entries', 'journal-entries.index')->name('journal-entries.index');
+    Volt::route('journal-entries/create', 'journal-entries.create')->name('journal-entries.create');
+    Volt::route('journal-entries/{id}', 'journal-entries.show')->name('journal-entries.show');
     
     // Budgets - specific routes first, then parameterized routes
     Volt::route('budgets', 'budgets.index')->name('budgets.index');
@@ -118,6 +197,13 @@ Route::middleware(['auth', 'role:admin,accountant'])->group(function () {
     // Settings (admin/accountant only)
     Volt::route('settings/company', 'settings.company')->middleware(['role:admin'])->name('settings.company');
     Volt::route('settings/currencies', 'settings.currencies')->middleware(['role:admin'])->name('settings.currencies');
+});
+
+// User Management - admin only
+Route::middleware(['auth', 'role:admin'])->group(function () {
+    Volt::route('settings/users', 'users.index')->name('users.index');
+    Volt::route('settings/users/create', 'users.create')->name('users.create');
+    Volt::route('settings/users/{id}/edit', 'users.create')->name('users.edit');
 });
 
 // Audit Trail - admin only
@@ -174,6 +260,59 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
 
 // Report exports (filtered by query string)
 Route::middleware(['auth', 'role:admin,accountant'])->group(function () {
+    Route::get('reports/trial-balance/export/csv', function () {
+        $start = request('start_date') ?: now()->startOfMonth()->toDateString();
+        $end = request('end_date') ?: now()->endOfMonth()->toDateString();
+        $accounts = \App\Models\Account::active()->orderBy('code')->get();
+        $rows = [];
+        foreach ($accounts as $a) {
+            $q = $a->journalEntryLines()->whereHas('journalEntry', function ($q) use ($start, $end) {
+                $q->where('status', 'posted')->whereBetween('date', [$start, $end]);
+            });
+            $debits = (float) $q->sum('debit');
+            $credits = (float) $q->sum('credit');
+            $net = round($debits - $credits, 2);
+            $dr = $net > 0 ? $net : 0.0;
+            $cr = $net < 0 ? abs($net) : 0.0;
+            if (abs($dr) < 0.005 && abs($cr) < 0.005) { continue; }
+            $rows[] = [$a->code, $a->name, $dr, $cr];
+        }
+        $out = fopen('php://temp', 'w+');
+        fputcsv($out, ['Code','Account','Debit','Credit']);
+        foreach ($rows as $r) { fputcsv($out, $r); }
+        $totDr = array_sum(array_column($rows, 2));
+        $totCr = array_sum(array_column($rows, 3));
+        fputcsv($out, ['Totals','', $totDr, $totCr]);
+        rewind($out);
+        return response(stream_get_contents($out), 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="trial-balance-' . now()->format('Y-m-d') . '.csv"',
+        ]);
+    })->name('reports.trial-balance.export.csv');
+
+    Route::get('reports/trial-balance/print', function () {
+        $start = request('start_date') ?: now()->startOfMonth()->toDateString();
+        $end = request('end_date') ?: now()->endOfMonth()->toDateString();
+        $accounts = \App\Models\Account::active()->orderBy('code')->get();
+        $rows = [];
+        foreach ($accounts as $a) {
+            $q = $a->journalEntryLines()->whereHas('journalEntry', function ($q) use ($start, $end) {
+                $q->where('status', 'posted')->whereBetween('date', [$start, $end]);
+            });
+            $debits = (float) $q->sum('debit');
+            $credits = (float) $q->sum('credit');
+            $net = round($debits - $credits, 2);
+            $dr = $net > 0 ? $net : 0.0;
+            $cr = $net < 0 ? abs($net) : 0.0;
+            if (abs($dr) < 0.005 && abs($cr) < 0.005) { continue; }
+            $rows[] = ['code' => $a->code, 'name' => $a->name, 'debit' => $dr, 'credit' => $cr];
+        }
+        $totals = [
+            'debit' => array_sum(array_map(fn($r) => $r['debit'], $rows)),
+            'credit' => array_sum(array_map(fn($r) => $r['credit'], $rows)),
+        ];
+        return view('print.trial-balance', compact('rows','start','end','totals'));
+    })->name('reports.trial-balance.print');
     Route::get('reports/profit-loss/export/csv', function () {
         $programId = request('program_id');
         $start = request('start_date') ?: now()->startOfMonth()->toDateString();

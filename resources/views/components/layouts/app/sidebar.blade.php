@@ -19,6 +19,7 @@
                 <flux:navlist.group :heading="__('Core Modules')" expandable class="grid">
                     <flux:navlist.item icon="folder" :href="route('programs.index')" :current="request()->routeIs('programs.*')" wire:navigate>{{ __('Programs') }}</flux:navlist.item>
                     <flux:navlist.item icon="calculator" :href="route('accounts.index')" :current="request()->routeIs('accounts.*')" wire:navigate>{{ __('Chart of Accounts') }}</flux:navlist.item>
+                    <flux:navlist.item icon="document-plus" :href="route('accounts.opening-balances')" :current="request()->routeIs('accounts.opening-balances')" wire:navigate>{{ __('Opening Balances') }}</flux:navlist.item>
                     <flux:navlist.item icon="banknotes" :href="route('sales.index')" :current="request()->routeIs('sales.*')" wire:navigate>{{ __('Sales & Income') }}</flux:navlist.item>
                     <flux:navlist.item icon="receipt-refund" :href="route('expenses.index')" :current="request()->routeIs('expenses.*')" wire:navigate>{{ __('Expenses') }}</flux:navlist.item>
                 </flux:navlist.group>
@@ -60,6 +61,10 @@
                 </flux:navlist.group>
 
                 <flux:navlist.group :heading="__('Reports')" expandable class="grid">
+                    <flux:navlist.item icon="book-open" :href="route('general-ledger')" :current="request()->routeIs('general-ledger') || request()->routeIs('account-statement')" wire:navigate>{{ __('General Ledger') }}</flux:navlist.item>
+                    <flux:navlist.item icon="table-cells" :href="route('trial-balance')" :current="request()->routeIs('trial-balance')" wire:navigate>{{ __('Trial Balance') }}</flux:navlist.item>
+                    <flux:navlist.item icon="chart-bar" :href="route('reports.balance-sheet')" :current="request()->routeIs('reports.balance-sheet')" wire:navigate>{{ __('Balance Sheet') }}</flux:navlist.item>
+                    <flux:navlist.item icon="document-text" :href="route('journal-entries.index')" :current="request()->routeIs('journal-entries.*')" wire:navigate>{{ __('Journal Entries') }}</flux:navlist.item>
                     <flux:navlist.item icon="chart-bar" :href="route('reports.profit-loss')" :current="request()->routeIs('reports.profit-loss')" wire:navigate>{{ __('Profit & Loss') }}</flux:navlist.item>
                     <flux:navlist.item icon="chart-pie" :href="route('reports.expense-breakdown')" :current="request()->routeIs('reports.expense-breakdown')" wire:navigate>{{ __('Expense Breakdown') }}</flux:navlist.item>
                     <flux:navlist.item icon="presentation-chart-line" :href="route('reports.sales-by-program')" :current="request()->routeIs('reports.sales-by-program')" wire:navigate>{{ __('Sales by Program') }}</flux:navlist.item>
@@ -76,6 +81,7 @@
                 @if(auth()->user() && auth()->user()->role === 'admin')
                 <flux:navlist.group :heading="__('Compliance')" expandable class="grid">
                     <flux:navlist.item icon="shield-check" :href="route('settings.audit')" :current="request()->routeIs('settings.audit*')" wire:navigate>{{ __('Audit Trail') }}</flux:navlist.item>
+                    <flux:navlist.item icon="users" :href="route('users.index')" :current="request()->routeIs('users.*')" wire:navigate>{{ __('User Management') }}</flux:navlist.item>
                     <flux:navlist.item icon="cog" :href="route('settings.company')" :current="request()->routeIs('settings.company')" wire:navigate>{{ __('Company Settings') }}</flux:navlist.item>
                     <flux:navlist.item icon="banknotes" :href="route('settings.currencies')" :current="request()->routeIs('settings.currencies')" wire:navigate>{{ __('Currencies') }}</flux:navlist.item>
                 </flux:navlist.group>
@@ -125,6 +131,7 @@
                         <flux:menu.item :href="route('profile.edit')" icon="user-circle" wire:navigate>{{ __('My Profile') }}</flux:menu.item>
                         @if(auth()->user() && auth()->user()->role === 'admin')
                         <flux:menu.item :href="route('settings.audit')" icon="shield-check" wire:navigate>{{ __('Audit Trail') }}</flux:menu.item>
+                        <flux:menu.item :href="route('users.index')" icon="users" wire:navigate>{{ __('User Management') }}</flux:menu.item>
                         @endif
                     </flux:menu.radio.group>
 
@@ -178,6 +185,7 @@
                         <flux:menu.item :href="route('profile.edit')" icon="user-circle" wire:navigate>{{ __('My Profile') }}</flux:menu.item>
                         @if(auth()->user() && auth()->user()->role === 'admin')
                         <flux:menu.item :href="route('settings.audit')" icon="shield-check" wire:navigate>{{ __('Audit Trail') }}</flux:menu.item>
+                        <flux:menu.item :href="route('users.index')" icon="users" wire:navigate>{{ __('User Management') }}</flux:menu.item>
                         @endif
                     </flux:menu.radio.group>
 

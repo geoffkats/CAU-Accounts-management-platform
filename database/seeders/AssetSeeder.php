@@ -89,7 +89,7 @@ class AssetSeeder extends Seeder
             // Computers
             [
                 'asset_category_id' => $compCategory->id,
-                'program_id' => $program?->id,
+                'funding_source' => 'operational',
                 'asset_tag' => 'COMP-0001',
                 'name' => 'Dell Latitude 7420 Laptop',
                 'description' => 'Business laptop for instructors',
@@ -111,7 +111,7 @@ class AssetSeeder extends Seeder
             ],
             [
                 'asset_category_id' => $compCategory->id,
-                'program_id' => $program?->id,
+                'funding_source' => 'operational',
                 'asset_tag' => 'COMP-0002',
                 'name' => 'HP EliteBook 840 G8',
                 'description' => 'Staff laptop',
@@ -135,7 +135,7 @@ class AssetSeeder extends Seeder
             // Projectors
             [
                 'asset_category_id' => $projCategory->id,
-                'program_id' => $program?->id,
+                'funding_source' => 'grant',
                 'asset_tag' => 'PROJ-0001',
                 'name' => 'Epson EB-2250U Projector',
                 'description' => 'Main lecture hall projector',
@@ -159,6 +159,7 @@ class AssetSeeder extends Seeder
             // Furniture
             [
                 'asset_category_id' => $furnCategory->id,
+                'funding_source' => 'operational',
                 'asset_tag' => 'FURN-0001',
                 'name' => 'Executive Office Desk',
                 'description' => 'Wooden executive desk',
@@ -178,6 +179,7 @@ class AssetSeeder extends Seeder
             ],
             [
                 'asset_category_id' => $furnCategory->id,
+                'funding_source' => 'grant',
                 'asset_tag' => 'FURN-0002',
                 'name' => 'Student Desk Set (50 units)',
                 'description' => 'Classroom student desks and chairs',
@@ -198,6 +200,7 @@ class AssetSeeder extends Seeder
             // Vehicles
             [
                 'asset_category_id' => $vehCategory->id,
+                'funding_source' => 'donation',
                 'asset_tag' => 'VEH-0001',
                 'name' => 'Toyota Hiace Minibus',
                 'description' => 'Student transport vehicle',
@@ -222,6 +225,7 @@ class AssetSeeder extends Seeder
             // Office Equipment
             [
                 'asset_category_id' => $offcCategory->id,
+                'funding_source' => 'operational',
                 'asset_tag' => 'OFFC-0001',
                 'name' => 'Canon ImageRunner 2625 Printer',
                 'description' => 'Multi-function printer/copier',
@@ -245,7 +249,7 @@ class AssetSeeder extends Seeder
             // Lab Equipment
             [
                 'asset_category_id' => $labCategory->id,
-                'program_id' => $program?->id,
+                'funding_source' => 'grant',
                 'asset_tag' => 'LAB-0001',
                 'name' => 'Digital Oscilloscope',
                 'description' => 'Electronics lab oscilloscope',

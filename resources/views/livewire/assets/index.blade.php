@@ -2,19 +2,17 @@
 
 use function Livewire\Volt\{state, computed};
 use App\Models\Asset;
-use App\Models\AssetCategory;
-use App\Models\Program;
+// Legacy models (AssetCategory/Program) are no longer used for filters
 use Illuminate\Support\Facades\DB;
 
 state([
     'search' => '',
     'category' => 'all',
-    'program' => 'all',
     'status' => 'all',
 ]);
 
 $assets = computed(function () {
-    return Asset::with(['category', 'program', 'assignedToStaff'])
+    return Asset::with(['assignedToStaff'])
         ->when($this->search, function ($query) {
             $query->where(function ($q) {
                 $q->where('asset_tag', 'like', '%' . $this->search . '%')
@@ -24,7 +22,6 @@ $assets = computed(function () {
             });
         })
         ->when($this->category !== 'all', fn($query) => $query->where('asset_category_id', $this->category))
-        ->when($this->program !== 'all', fn($query) => $query->where('program_id', $this->program))
         ->when($this->status !== 'all', fn($query) => $query->where('status', $this->status))
         ->latest()
         ->paginate(15);
@@ -41,13 +38,7 @@ $stats = computed(function () {
     ];
 });
 
-$categories = computed(function () {
-    return AssetCategory::active()->orderBy('name')->get();
-});
-
-$programs = computed(function () {
-    return Program::orderBy('name')->get();
-});
+// Categories/programs are now fixed enums; we render options inline below
 
 ?>
 
@@ -194,19 +185,14 @@ $programs = computed(function () {
                     <select wire:model.live="category"
                             class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white">
                         <option value="all">All Categories</option>
-                        @foreach($this->categories as $cat)
-                            <option value="{{ $cat->id }}">{{ $cat->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-
-                <div>
-                    <select wire:model.live="program"
-                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white">
-                        <option value="all">All Programs</option>
-                        @foreach($this->programs as $prog)
-                            <option value="{{ $prog->id }}">{{ $prog->name }}</option>
-                        @endforeach
+                        <option value="land_buildings">Land & Buildings</option>
+                        <option value="motor_vehicles">Motor Vehicles</option>
+                        <option value="ict_equipment">ICT Equipment</option>
+                        <option value="furniture_fittings">Furniture & Fittings</option>
+                        <option value="office_equipment">Office Equipment</option>
+                        <option value="machinery_tools">Machinery / Tools</option>
+                        <option value="intangible_assets">Intangible Assets</option>
+                        <option value="leasehold_improvements">Leasehold Improvements</option>
                     </select>
                 </div>
 
@@ -276,14 +262,12 @@ $programs = computed(function () {
                                 <div class="mt-4 space-y-2">
                                     <div class="flex items-center justify-between text-sm">
                                         <span class="text-gray-600 dark:text-gray-400">Category:</span>
-                                        <span class="font-medium text-gray-900 dark:text-white">{{ $asset->category->name }}</span>
+                                        <span class="font-medium text-gray-900 dark:text-white">{{ $asset->category_label }}</span>
                                     </div>
-                                    @if($asset->program)
-                                        <div class="flex items-center justify-between text-sm">
-                                            <span class="text-gray-600 dark:text-gray-400">Program:</span>
-                                            <span class="font-medium text-gray-900 dark:text-white">{{ $asset->program->name }}</span>
-                                        </div>
-                                    @endif
+                                    <div class="flex items-center justify-between text-sm">
+                                        <span class="text-gray-600 dark:text-gray-400">Funding Source:</span>
+                                        <span class="font-medium text-gray-900 dark:text-white">{{ $asset->funding_source_label }}</span>
+                                    </div>
                                     <div class="flex items-center justify-between text-sm">
                                         <span class="text-gray-600 dark:text-gray-400">Purchase Price:</span>
                                         <span class="font-bold text-indigo-600 dark:text-indigo-400">UGX {{ number_format($asset->purchase_price) }}</span>

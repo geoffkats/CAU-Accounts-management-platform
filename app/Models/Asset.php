@@ -120,7 +120,7 @@ class Asset extends Model
 
     protected $fillable = [
         'asset_category_id',
-        'program_id',
+        'funding_source',
         'asset_tag',
         'name',
         'description',
@@ -164,7 +164,7 @@ class Asset extends Model
         'disposal_date' => 'date',
     ];
 
-    // Relationships
+    // Relationships (legacy; category/program kept for backward compatibility but not used)
     public function category()
     {
         return $this->belongsTo(AssetCategory::class, 'asset_category_id');
@@ -780,5 +780,39 @@ class Asset extends Model
         }
 
         return null;
+    }
+
+    /**
+     * Human-readable category label from stored string key
+     */
+    public function getCategoryLabelAttribute(): string
+    {
+        $map = [
+            'land_buildings' => 'Land & Buildings',
+            'motor_vehicles' => 'Motor Vehicles',
+            'ict_equipment' => 'ICT Equipment',
+            'furniture_fittings' => 'Furniture & Fittings',
+            'office_equipment' => 'Office Equipment',
+            'machinery_tools' => 'Machinery / Tools',
+            'intangible_assets' => 'Intangible Assets',
+            'leasehold_improvements' => 'Leasehold Improvements',
+        ];
+
+        return $map[$this->asset_category_id] ?? 'Uncategorized';
+    }
+
+    /**
+     * Human-readable funding source label from stored string key
+     */
+    public function getFundingSourceLabelAttribute(): string
+    {
+        $map = [
+            'owned' => 'Owned Assets',
+            'donated' => 'Donated Assets',
+            'leased' => 'Leased Assets',
+            'grant_funded' => 'Grant-funded Assets',
+        ];
+
+        return $map[$this->funding_source] ?? 'N/A';
     }
 }

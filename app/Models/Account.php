@@ -50,6 +50,109 @@ class Account extends Model
         return $this->hasMany(Account::class, 'parent_id');
     }
 
+    public function journalEntryLines()
+    {
+        return $this->hasMany(JournalEntryLine::class);
+    }
+
+    /**
+     * ACCOUNTING BALANCE CALCULATIONS
+     * 
+     * Formula for account balance depends on account type:
+     * - Assets: Debit - Credit (increases with debits)
+     * - Expenses: Debit - Credit (increases with debits)
+     * - Liabilities: Credit - Debit (increases with credits)
+     * - Equity: Credit - Debit (increases with credits)
+     * - Income: Credit - Debit (increases with credits)
+     */
+
+    /**
+     * Calculate account balance using proper accounting rules
+     * 
+     * @param string|null $startDate Optional start date for period balance
+     * @param string|null $endDate Optional end date for period balance
+     * @return float The account balance
+     */
+    public function calculateBalance($startDate = null, $endDate = null): float
+    {
+        $query = $this->journalEntryLines()
+            ->whereHas('journalEntry', function ($q) use ($startDate, $endDate) {
+                $q->where('status', 'posted');
+                if ($startDate && $endDate) {
+                    $q->whereBetween('date', [$startDate, $endDate]);
+                }
+            });
+
+        $totalDebits = (float) $query->sum('debit');
+        $totalCredits = (float) $query->sum('credit');
+
+        // Apply proper accounting equation based on account type
+        return match($this->type) {
+            'asset', 'expense' => $totalDebits - $totalCredits,  // Normal debit balance
+            'liability', 'equity', 'income' => $totalCredits - $totalDebits,  // Normal credit balance
+            default => $totalDebits - $totalCredits
+        };
+    }
+
+    /**
+     * Get all transactions for this account
+     */
+    public function getTransactions($startDate = null, $endDate = null)
+    {
+        return $this->journalEntryLines()
+            ->with(['journalEntry', 'account'])
+            ->whereHas('journalEntry', function ($q) use ($startDate, $endDate) {
+                $q->where('status', 'posted');
+                if ($startDate && $endDate) {
+                    $q->whereBetween('date', [$startDate, $endDate]);
+                }
+            })
+            ->join('journal_entries', 'journal_entry_lines.journal_entry_id', '=', 'journal_entries.id')
+            ->orderBy('journal_entries.date')
+            ->orderBy('journal_entries.id')
+            ->select('journal_entry_lines.*')
+            ->get();
+    }
+
+    /**
+     * Get account balance with running balance for each transaction
+     */
+    public function getTransactionsWithRunningBalance($startDate = null, $endDate = null)
+    {
+        $transactions = $this->getTransactions($startDate, $endDate);
+        $runningBalance = 0;
+
+        return $transactions->map(function ($transaction) use (&$runningBalance) {
+            // Calculate the effect of this transaction on balance
+            $effect = match($this->type) {
+                'asset', 'expense' => $transaction->debit - $transaction->credit,
+                'liability', 'equity', 'income' => $transaction->credit - $transaction->debit,
+                default => $transaction->debit - $transaction->credit
+            };
+
+            $runningBalance += $effect;
+            $transaction->running_balance = $runningBalance;
+            
+            return $transaction;
+        });
+    }
+
+    /**
+     * Check if account has normal debit balance
+     */
+    public function hasNormalDebitBalance(): bool
+    {
+        return in_array($this->type, ['asset', 'expense']);
+    }
+
+    /**
+     * Check if account has normal credit balance
+     */
+    public function hasNormalCreditBalance(): bool
+    {
+        return in_array($this->type, ['liability', 'equity', 'income']);
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);

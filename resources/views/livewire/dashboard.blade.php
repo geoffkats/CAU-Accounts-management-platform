@@ -27,13 +27,29 @@ new class extends Component {
                        (Expense::whereBetween('expense_date', $dateRange)->sum('amount_base') ?: 
                         Expense::whereBetween('expense_date', $dateRange)->sum('amount')),
             'activePrograms' => Program::where('status', 'active')->count(),
-            'unpaidSales' => Sale::where('status', '!=', 'paid')->sum('amount_base') ?: 
-                            Sale::where('status', '!=', 'paid')->sum('amount'),
-            'pendingExpenses' => Expense::where('status', 'pending')->sum('amount_base') ?: 
-                                Expense::where('status', 'pending')->sum('amount'),
+            'unpaidSales' => Sale::where('status', '!=', 'paid')
+                            ->whereBetween('sale_date', $dateRange)
+                            ->sum('amount_base') ?: 
+                            Sale::where('status', '!=', 'paid')
+                            ->whereBetween('sale_date', $dateRange)
+                            ->sum('amount'),
+            'pendingExpenses' => Expense::where(function($query) {
+                                    $query->where('payment_status', 'unpaid')
+                                          ->orWhere('payment_status', 'partial');
+                                })
+                                ->whereBetween('expense_date', $dateRange)
+                                ->sum('amount_base') ?: 
+                                Expense::where(function($query) {
+                                    $query->where('payment_status', 'unpaid')
+                                          ->orWhere('payment_status', 'partial');
+                                })
+                                ->whereBetween('expense_date', $dateRange)
+                                ->sum('amount'),
             'programsData' => $this->getProgramsData($dateRange),
             'monthlyTrend' => $this->getMonthlyTrend(),
-            'topCustomers' => Customer::withSum('sales', 'amount')
+            'topCustomers' => Customer::withSum(['sales' => function($query) use ($dateRange) {
+                    $query->whereBetween('sale_date', $dateRange);
+                }], 'amount')
                 ->orderByDesc('sales_sum_amount')
                 ->limit(5)
                 ->get(),
@@ -266,7 +282,7 @@ new class extends Component {
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-base font-semibold text-zinc-900 dark:text-white flex items-center">
                     <span class="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                    Pending Expenses
+                    Unpaid Expenses
                 </h3>
                 <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -275,7 +291,7 @@ new class extends Component {
             <p class="text-3xl font-semibold text-purple-600 dark:text-purple-400 mb-2">
                 {{ $baseCurrency->symbol }} {{ number_format($pendingExpenses, 0) }}
             </p>
-            <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">Awaiting approval or payment</p>
+            <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">Outstanding payables (unpaid & partial)</p>
             <a href="{{ route('expenses.index') }}" 
                class="inline-flex items-center px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm font-medium rounded-lg transition-colors">
                 View Details
