@@ -178,6 +178,7 @@ class DatabaseSeeder extends Seeder
             AssetSeeder::class,                // Asset categories and sample assets
             BudgetSeeder::class,               // Program budgets
             SalesExpensesSeeder::class,        // Sample sales and expenses
+            GovernmentDemoDataSeeder::class,   // High-volume 24-month demo data for audits/demos
         ]);
 
         $this->command->info('✓ Database seeded successfully with comprehensive accounting data!');
@@ -186,6 +187,7 @@ class DatabaseSeeder extends Seeder
         $this->command->info('✓ Asset categories and sample assets created');
         $this->command->info('✓ Program budgets created');
         $this->command->info('✓ Sample sales and expenses with journal entries created');
+        $this->command->info('✓ High-volume 24-month government demo dataset generated');
         
         $this->command->newLine();
         $this->command->warn('⚠️  DEFAULT LOGIN CREDENTIALS:');

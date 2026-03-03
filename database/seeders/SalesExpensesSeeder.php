@@ -58,7 +58,7 @@ class SalesExpensesSeeder extends Seeder
                     'currency' => $currency,
                     'amount_paid' => $i % 3 === 0 ? $amount : ($amount * 0.5),
                     'status' => $i % 3 === 0 ? Sale::STATUS_PAID : Sale::STATUS_PARTIALLY_PAID,
-                    'description' => 'Seed sale for program ' . $program->code,
+                    'description' => 'Program service invoice for ' . $program->code,
                 ]);
             }
 
@@ -76,7 +76,7 @@ class SalesExpensesSeeder extends Seeder
                     'expense_date' => $date->toDateString(),
                     'amount' => $amount,
                     'currency' => $currency,
-                    'description' => 'Seed expense: ' . $account->name,
+                    'description' => $account->name . ' expense for program operations',
                     'category' => $account->name,
                 ]);
             }
