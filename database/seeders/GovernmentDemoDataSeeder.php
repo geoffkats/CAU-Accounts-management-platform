@@ -25,6 +25,8 @@ class GovernmentDemoDataSeeder extends Seeder
 {
     private const DEMO_TAG = 'GOV_DEMO_2026';
 
+    private ?object $fakerInstance = null;
+
     public function run(): void
     {
         DB::disableQueryLog();
@@ -69,7 +71,7 @@ class GovernmentDemoDataSeeder extends Seeder
             return;
         }
 
-        $faker = fake();
+        $faker = $this->faker();
         $start = now()->subMonths($months)->startOfMonth();
         $end = now()->subDay()->endOfDay();
 
@@ -273,7 +275,7 @@ class GovernmentDemoDataSeeder extends Seeder
             return;
         }
 
-        $faker = fake();
+        $faker = $this->faker();
         for ($index = $current + 1; $index <= $target; $index++) {
             Customer::create([
                 'name' => 'Institution Client ' . $index,
@@ -297,7 +299,7 @@ class GovernmentDemoDataSeeder extends Seeder
             return;
         }
 
-        $faker = fake();
+        $faker = $this->faker();
         $vendorTypes = ['supplier', 'utility', 'contractor', 'service_provider'];
         $serviceTypes = ['Training Materials', 'Transport', 'ICT Services', 'Utilities', 'Facilities'];
 
@@ -335,7 +337,7 @@ class GovernmentDemoDataSeeder extends Seeder
             return;
         }
 
-        $faker = fake();
+        $faker = $this->faker();
         $employmentTypes = ['full_time', 'part_time', 'contract', 'consultant'];
 
         for ($index = $current + 1; $index <= $target; $index++) {
@@ -367,7 +369,7 @@ class GovernmentDemoDataSeeder extends Seeder
 
     private function seedCustomerPaymentsForSale(Sale $sale, $receiptAccounts, Carbon $monthEnd): int
     {
-        $faker = fake();
+        $faker = $this->faker();
         $paymentProfile = $this->pickPaymentProfile();
 
         if ($paymentProfile === 'none') {
@@ -428,7 +430,7 @@ class GovernmentDemoDataSeeder extends Seeder
 
     private function seedPaymentsForExpense(Expense $expense, $paymentAccounts, Carbon $monthEnd): int
     {
-        $faker = fake();
+        $faker = $this->faker();
         $paymentProfile = $this->pickPaymentProfile();
 
         if ($paymentProfile === 'none') {
@@ -491,7 +493,7 @@ class GovernmentDemoDataSeeder extends Seeder
         array $agingProfile,
         int &$journalEntriesCreated
     ): int {
-        $faker = fake();
+        $faker = $this->faker();
         $paymentProfile = $agingProfile['payment_profile'];
 
         if ($paymentProfile === 'none') {
@@ -576,7 +578,7 @@ class GovernmentDemoDataSeeder extends Seeder
         int &$itemsCreated,
         int &$journalEntriesCreated
     ): void {
-        $faker = fake();
+        $faker = $this->faker();
 
         $runStatus = $this->pickPayrollRunStatus($monthEnd);
         $runNumber = sprintf('PR-%s-%06d', $monthEnd->format('Ym'), $runSequence++);
@@ -1065,5 +1067,98 @@ class GovernmentDemoDataSeeder extends Seeder
             'EUR' => 4000.0,
             default => 1.0,
         };
+    }
+
+    private function faker(): object
+    {
+        if ($this->fakerInstance !== null) {
+            return $this->fakerInstance;
+        }
+
+        if (function_exists('fake')) {
+            $this->fakerInstance = fake();
+            return $this->fakerInstance;
+        }
+
+        if (class_exists('\\Faker\\Factory')) {
+            $this->fakerInstance = \Faker\Factory::create();
+            return $this->fakerInstance;
+        }
+
+        // Production-safe fallback when fakerphp/faker is not installed (e.g. --no-dev).
+        $this->fakerInstance = new class {
+            private array $firstNames = ['James', 'Grace', 'Peter', 'Sarah', 'Daniel', 'Ruth', 'Michael', 'Esther'];
+            private array $lastNames = ['Okello', 'Nabirye', 'Kato', 'Achieng', 'Mugisha', 'Namusoke', 'Ssembatya', 'Atim'];
+            private array $streets = ['Kampala Road', 'Jinja Road', 'Gulu Lane', 'Mbarara Close', 'Entebbe Road'];
+
+            public function dateTimeBetween($startDate = '-30 years', $endDate = 'now'): \DateTime
+            {
+                $start = $startDate instanceof \DateTimeInterface ? $startDate->getTimestamp() : strtotime((string) $startDate);
+                $end = $endDate instanceof \DateTimeInterface ? $endDate->getTimestamp() : strtotime((string) $endDate);
+
+                if ($start === false || $end === false) {
+                    return new \DateTime();
+                }
+
+                if ($end < $start) {
+                    [$start, $end] = [$end, $start];
+                }
+
+                return (new \DateTime())->setTimestamp(random_int($start, $end));
+            }
+
+            public function bothify(string $template): string
+            {
+                $value = preg_replace_callback('/\?/', static fn () => chr(random_int(65, 90)), $template);
+                return preg_replace_callback('/#/', static fn () => (string) random_int(0, 9), $value ?? $template);
+            }
+
+            public function numerify(string $template): string
+            {
+                return preg_replace_callback('/#/', static fn () => (string) random_int(0, 9), $template) ?? $template;
+            }
+
+            public function randomElement(array $array)
+            {
+                return $array[array_rand($array)];
+            }
+
+            public function numberBetween(int $min = 0, int $max = 2147483647): int
+            {
+                return random_int($min, $max);
+            }
+
+            public function randomFloat(int $decimals = 2, float $min = 0, float $max = 1): float
+            {
+                if ($max < $min) {
+                    [$min, $max] = [$max, $min];
+                }
+
+                $factor = 10 ** max(0, $decimals);
+                return random_int((int) round($min * $factor), (int) round($max * $factor)) / $factor;
+            }
+
+            public function firstName(): string
+            {
+                return $this->firstNames[array_rand($this->firstNames)];
+            }
+
+            public function lastName(): string
+            {
+                return $this->lastNames[array_rand($this->lastNames)];
+            }
+
+            public function name(): string
+            {
+                return $this->firstName() . ' ' . $this->lastName();
+            }
+
+            public function address(): string
+            {
+                return random_int(10, 999) . ' ' . $this->streets[array_rand($this->streets)] . ', Kampala';
+            }
+        };
+
+        return $this->fakerInstance;
     }
 }
