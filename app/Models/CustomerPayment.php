@@ -109,7 +109,7 @@ class CustomerPayment extends Model
      * Create journal entry for customer payment
      * 
      * Double-entry logic:
-     * Dr. Bank/Cash Account - Cash received
+     * Dr. Bank/Cash/Mobile Money Account - Cash received
      * Cr. Accounts Receivable (1200) - Customer owes less
      */
     public function createJournalEntry(): JournalEntry
@@ -119,20 +119,29 @@ class CustomerPayment extends Model
             $debitAccount = $this->paymentAccount;
         } else {
             // Select account based on payment method
-            if ($this->payment_method === 'cash') {
-                // For cash payments, use Cash on Hand (1000)
-                $debitAccount = Account::where('code', '1000')->first();
+            if ($this->payment_method === 'airtel') {
+                $debitAccount = Account::where('code', '1150')->first(); // Airtel Money
+                if (!$debitAccount) {
+                    $debitAccount = Account::where('code', '1100')->first(); // Fallback to Bank
+                }
+            } elseif ($this->payment_method === 'momo' || $this->payment_method === 'mobile_money') {
+                $debitAccount = Account::where('code', '1160')->first(); // MTN Mobile Money
+                if (!$debitAccount) {
+                    $debitAccount = Account::where('code', '1100')->first(); // Fallback to Bank
+                }
+            } elseif ($this->payment_method === 'cash') {
+                $debitAccount = Account::where('code', '1000')->first(); // Cash on Hand
+                if (!$debitAccount) {
+                    $debitAccount = Account::where('code', '1100')->first(); // Fallback to Bank
+                }
             } else {
-                // For bank transfers, mobile money, checks, etc., use Bank Account (1100)
+                // Default to Bank Account for checks, transfers, etc.
                 $debitAccount = Account::where('code', '1100')->first();
             }
             
-            // Fallback if neither account exists
+            // Last resort fallback
             if (!$debitAccount) {
-                $debitAccount = Account::where('code', '1100')->first();
-                if (!$debitAccount) {
-                    $debitAccount = Account::where('code', '1000')->first();
-                }
+                $debitAccount = Account::where('code', '1000')->first();
             }
         }
 
@@ -158,7 +167,7 @@ class CustomerPayment extends Model
                 'posted_at' => now(),
             ],
             [
-                // Line 1: Debit Bank (cash received)
+                // Line 1: Debit Bank/Cash/Mobile Money (cash received)
                 [
                     'account_id' => $debitAccount->id,
                     'debit' => $this->amount_base ?? $this->amount,

@@ -246,7 +246,63 @@ class Sale extends Model
         $customerName = $this->customer?->name ?? 'Unknown Customer';
         $description = "Income: {$this->description} - From: {$customerName}";
 
-        // Create journal entry with two lines (Dr. Bank/AR, Cr. Income)
+        // Build journal entry lines
+        $lines = [
+            // Line 1: Debit Bank or Accounts Receivable
+            [
+                'account_id' => $debitAccount->id,
+                'debit' => $this->amount_base ?? $this->amount,
+                'credit' => 0,
+                'description' => $this->status === self::STATUS_PAID || $this->status === self::STATUS_PARTIALLY_PAID
+                    ? "Payment received from {$customerName}"
+                    : "Accounts Receivable - {$customerName}",
+            ],
+            // Line 2: Credit Income Account
+            [
+                'account_id' => $creditAccount->id,
+                'debit' => 0,
+                'credit' => $this->amount_base ?? $this->amount,
+                'description' => $this->description,
+            ],
+        ];
+
+        // Line 3: Handle Discount (if any) - Debit Discounts Allowed, Credit Income
+        if (!empty($this->discount_amount) && $this->discount_amount > 0) {
+            $discountAccount = Account::where('code', '5100')->first(); // Discounts Allowed
+            if (!$discountAccount) {
+                $discountAccount = Account::where('code', '5199')->first(); // Fallback
+            }
+            if ($discountAccount) {
+                $lines[] = [
+                    'account_id' => $discountAccount->id,
+                    'debit' => $this->discount_amount,
+                    'credit' => 0,
+                    'description' => "Sales Discount from {$customerName}",
+                ];
+                // Reduce income by discount
+                $lines[1]['credit'] -= $this->discount_amount;
+            }
+        }
+
+        // Line 4: Handle Tax (if any) - Debit Tax Receivable/Payable
+        if (!empty($this->tax_amount) && $this->tax_amount > 0) {
+            $taxAccount = Account::where('code', '2400')->first(); // Tax Account
+            if (!$taxAccount) {
+                $taxAccount = Account::where('code', '2401')->first(); // Fallback
+            }
+            if ($taxAccount) {
+                $lines[] = [
+                    'account_id' => $taxAccount->id,
+                    'debit' => $this->tax_amount,
+                    'credit' => 0,
+                    'description' => "Tax - {$customerName}",
+                ];
+                // Adjust debit to include tax
+                $lines[0]['debit'] += $this->tax_amount;
+            }
+        }
+
+        // Create journal entry
         $journalEntry = JournalEntry::createEntry(
             [
                 'date' => $this->sale_date,
@@ -257,24 +313,7 @@ class Sale extends Model
                 'status' => 'posted',
                 'posted_at' => now(),
             ],
-            [
-                // Line 1: Debit Bank or Accounts Receivable
-                [
-                    'account_id' => $debitAccount->id,
-                    'debit' => $this->amount_base ?? $this->amount,
-                    'credit' => 0,
-                    'description' => $this->status === self::STATUS_PAID || $this->status === self::STATUS_PARTIALLY_PAID
-                        ? "Payment received from {$customerName}"
-                        : "Accounts Receivable - {$customerName}",
-                ],
-                // Line 2: Credit Income Account
-                [
-                    'account_id' => $creditAccount->id,
-                    'debit' => 0,
-                    'credit' => $this->amount_base ?? $this->amount,
-                    'description' => $this->description,
-                ],
-            ]
+            $lines
         );
 
         return $journalEntry;
@@ -328,7 +367,15 @@ class Sale extends Model
         static::updating($check);
 
         // Keep sale journal entry in sync when sale is updated
+        // IMPORTANT: Only recreate journal entry for material changes (amount, account, date)
+        // DO NOT recreate when status changes - status is computed from payments
+        // Customer payments handle the AR reduction via separate journal entries
         static::updated(function (self $sale) {
+            // Only recreate journal entry if material fields change, NOT status
+            if (!$sale->isDirty(['amount', 'account_id', 'sale_date', 'amount_base'])) {
+                return; // No material changes, skip journal entry recreation
+            }
+
             try {
                 $entry = JournalEntry::where('sales_id', $sale->id)->latest('id')->first();
                 $oldId = $entry?->id;

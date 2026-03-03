@@ -21,9 +21,11 @@ class Expense extends Model
         'vendor_id',
         'staff_id',
         'account_id',
+        'payment_account_id',
         'expense_date',
         'amount',
         'charges',
+        'discount_amount',
         'currency',
         'amount_base',
         'exchange_rate',
@@ -38,6 +40,7 @@ class Expense extends Model
         'expense_date' => 'date',
         'amount' => 'decimal:2',
         'charges' => 'decimal:2',
+        'discount_amount' => 'decimal:2',
         'amount_base' => 'decimal:2',
         'exchange_rate' => 'decimal:6',
     ];
@@ -53,7 +56,20 @@ class Expense extends Model
     const CATEGORY_WELFARE = 'welfare';
     const CATEGORY_OTHER = 'other';
 
-    public static function getCategories(): array
+    const STATUS_UNPAID = 'unpaid';
+    const STATUS_PAID = 'paid';
+    const STATUS_PARTIALLY_PAID = 'partially_paid';
+    const STATUS_CANCELLED = 'cancelled';
+
+    public static function getStatuses(): array
+    {
+        return [
+            self::STATUS_UNPAID => 'Unpaid',
+            self::STATUS_PAID => 'Paid',
+            self::STATUS_PARTIALLY_PAID => 'Partially Paid',
+            self::STATUS_CANCELLED => 'Cancelled',
+        ];
+    }
     {
         return [
             self::CATEGORY_SALARIES => 'Salaries & Wages',
@@ -207,7 +223,10 @@ class Expense extends Model
      */
     public function createJournalEntry(): JournalEntry
     {
-        // Always credit Accounts Payable (payment handled separately)
+        // Determine if expense is paid (Payment model will handle actual payment)
+        // For unpaid expenses, credit Accounts Payable
+        // For paid expenses, credit Cash/Bank (handled by Payment model)
+        
         $accountsPayable = Account::where('code', '2000')->first();
         
         if (!$accountsPayable) {
@@ -218,7 +237,62 @@ class Expense extends Model
         $payeeName = $this->vendor?->name ?? $this->staff?->first_name . ' ' . $this->staff?->last_name ?? 'Unknown';
         $description = "Expense: {$this->description} - Payable to: {$payeeName}";
 
-        // Create journal entry with two lines
+        // Build journal entry lines
+        $lines = [
+            // Line 1: Debit Expense Account (base amount without charges)
+            [
+                'account_id' => $this->account_id,
+                'debit' => (float) ($this->amount_base ?? $this->amount),
+                'credit' => 0,
+                'description' => $this->description,
+            ],
+        ];
+
+        // Line 2: Handle Charges (if any) - Debit Charges Account
+        if (!empty($this->charges) && $this->charges > 0) {
+            $chargesAccount = Account::where('code', '5500')->first(); // Charges Account
+            if (!$chargesAccount) {
+                $chargesAccount = Account::where('code', '5599')->first(); // Fallback
+            }
+            if ($chargesAccount) {
+                $lines[] = [
+                    'account_id' => $chargesAccount->id,
+                    'debit' => (float) $this->charges,
+                    'credit' => 0,
+                    'description' => "Charges from {$payeeName}",
+                ];
+            }
+        }
+
+        // Line 3: Credit Accounts Payable (total expense + charges)
+        $lines[] = [
+            'account_id' => $accountsPayable->id,
+            'debit' => 0,
+            'credit' => (float) ($this->amount_base ?? ($this->amount + ($this->charges ?? 0))),
+            'description' => "Accounts Payable - {$payeeName}",
+        ];
+
+        // Handle Discounts (if any) - Reduce the expense amount
+        // In expense context, discounts are benefits received, not expenses
+        // This should go to "Discounts Received" account
+        if (!empty($this->discount_amount) && $this->discount_amount > 0) {
+            $discountAccount = Account::where('code', '5200')->first(); // Discounts Received
+            if (!$discountAccount) {
+                $discountAccount = Account::where('code', '5299')->first(); // Fallback
+            }
+            if ($discountAccount) {
+                $lines[] = [
+                    'account_id' => $discountAccount->id,
+                    'debit' => 0,
+                    'credit' => (float) $this->discount_amount,
+                    'description' => "Discount Received from {$payeeName}",
+                ];
+                // Reduce accounts payable by discount
+                $lines[count($lines) - 2]['credit'] -= $this->discount_amount;
+            }
+        }
+
+        // Create journal entry
         $journalEntry = JournalEntry::createEntry(
             [
                 'date' => $this->expense_date,
@@ -229,28 +303,30 @@ class Expense extends Model
                 'status' => 'posted',
                 'posted_at' => now(),
             ],
-            [
-                // Line 1: Debit Expense Account
-                [
-                    'account_id' => $this->account_id,
-                    'debit' => (float) ($this->amount_base ?? $this->amount) + (is_numeric($this->charges) ? (float) $this->charges : 0),
-                    'credit' => 0,
-                    'description' => $this->description,
-                ],
-                // Line 2: Credit Accounts Payable
-                [
-                    'account_id' => $accountsPayable->id,
-                    'debit' => 0,
-                    'credit' => (float) ($this->amount_base ?? $this->amount) + (is_numeric($this->charges) ? (float) $this->charges : 0),
-                    'description' => "Accounts Payable - {$payeeName}",
-                ],
-            ]
+            $lines
         );
 
         return $journalEntry;
     }
 
 
+
+    public function updatePaymentStatus(): void
+    {
+        // Get total amount paid via Payment records
+        $totalPaid = $this->payments()->sum('amount');
+        $totalAmount = $this->amount_base ?? $this->amount;
+
+        if ($totalPaid <= 0) {
+            $this->status = 'unpaid';
+        } elseif ($totalPaid >= $totalAmount) {
+            $this->status = 'paid';
+        } else {
+            $this->status = 'partially_paid';
+        }
+
+        $this->save();
+    }
 
     protected static function booted(): void
     {

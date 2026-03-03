@@ -47,17 +47,52 @@ class Payment extends Model
      * 
      * DOUBLE-ENTRY BOOKKEEPING FOR PAYMENT:
      * Dr. Accounts Payable (2000)    XXX   (reduce liability)
-     *     Cr. Cash/Bank (1xxx)       XXX   (reduce asset - money out)
+     *     Cr. Cash/Bank/Mobile Money (1xxx)  XXX   (reduce asset - money out)
      */
     public function createJournalEntry(): JournalEntry
     {
         $expense = $this->expense;
-        $paymentAccount = $this->paymentAccount;
 
         // Get Accounts Payable account
         $accountsPayable = Account::where('code', '2000')->first();
         if (!$accountsPayable) {
             throw new \Exception('Accounts Payable account (2000) not found. Please create it first.');
+        }
+
+        // Determine credit account based on payment method
+        if ($this->payment_account_id) {
+            // Use the specified payment account
+            $paymentAccount = $this->paymentAccount;
+        } else {
+            // Select account based on payment method
+            if ($this->payment_method === 'airtel') {
+                $paymentAccount = Account::where('code', '1150')->first(); // Airtel Money
+                if (!$paymentAccount) {
+                    $paymentAccount = Account::where('code', '1100')->first(); // Fallback to Bank
+                }
+            } elseif ($this->payment_method === 'momo' || $this->payment_method === 'mobile_money') {
+                $paymentAccount = Account::where('code', '1160')->first(); // MTN Mobile Money
+                if (!$paymentAccount) {
+                    $paymentAccount = Account::where('code', '1100')->first(); // Fallback to Bank
+                }
+            } elseif ($this->payment_method === 'cash') {
+                $paymentAccount = Account::where('code', '1000')->first(); // Cash on Hand
+                if (!$paymentAccount) {
+                    $paymentAccount = Account::where('code', '1100')->first(); // Fallback to Bank
+                }
+            } else {
+                // Default to Bank Account for checks, transfers, etc.
+                $paymentAccount = Account::where('code', '1100')->first();
+            }
+
+            // Last resort fallback
+            if (!$paymentAccount) {
+                $paymentAccount = Account::where('code', '1000')->first();
+            }
+        }
+
+        if (!$paymentAccount) {
+            throw new \Exception('Payment account not found. Please create Cash or Bank accounts.');
         }
 
         // Build description
@@ -84,9 +119,9 @@ class Payment extends Model
                     'credit' => 0,
                     'description' => "Payment to {$payeeName}",
                 ],
-                // Line 2: Credit Cash/Bank (money out)
+                // Line 2: Credit Cash/Bank/Mobile Money (money out)
                 [
-                    'account_id' => $this->payment_account_id,
+                    'account_id' => $paymentAccount->id,
                     'debit' => 0,
                     'credit' => $this->amount,
                     'description' => "Payment from {$paymentAccount->name}",
@@ -128,6 +163,8 @@ class Payment extends Model
         static::created(function (self $payment) {
             try {
                 $payment->createJournalEntry();
+                // Update expense payment status
+                $payment->expense->updatePaymentStatus();
             } catch (\Exception $e) {
                 \Log::error('Failed to create journal entry for payment: ' . $e->getMessage());
             }
@@ -145,6 +182,8 @@ class Payment extends Model
                 if ($oldId) {
                     $newEntry->update(['replaces_entry_id' => $oldId]);
                 }
+                // Update expense payment status
+                $payment->expense->updatePaymentStatus();
             } catch (\Exception $e) {
                 \Log::error('Failed to recreate payment journal entry on update: ' . $e->getMessage());
             }
@@ -157,6 +196,8 @@ class Payment extends Model
                 if ($entry) {
                     $entry->void();
                 }
+                // Update expense payment status
+                $payment->expense->updatePaymentStatus();
             } catch (\Exception $e) {
                 \Log::error('Failed to void payment journal entry on delete: ' . $e->getMessage());
             }
