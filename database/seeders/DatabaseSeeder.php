@@ -13,6 +13,8 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $this->command->info('Creating default users...');
+        
         // Create Admin User
         $admin = User::firstOrCreate(
             ['email' => 'admin@codeacademy.ug'],
@@ -23,6 +25,12 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
+        if ($admin->wasRecentlyCreated) {
+            $this->command->info('✓ Admin user created: admin@codeacademy.ug');
+        } else {
+            $this->command->info('✓ Admin user already exists: admin@codeacademy.ug');
+        }
+
         // Create Accountant User
         $accountant = User::firstOrCreate(
             ['email' => 'accountant@codeacademy.ug'],
@@ -32,6 +40,15 @@ class DatabaseSeeder extends Seeder
                 'role' => 'accountant',
             ]
         );
+
+        if ($accountant->wasRecentlyCreated) {
+            $this->command->info('✓ Accountant user created: accountant@codeacademy.ug');
+        } else {
+            $this->command->info('✓ Accountant user already exists: accountant@codeacademy.ug');
+        }
+
+        $this->command->newLine();
+        $this->command->info('Creating company settings...');
 
         // Create Company Settings
         \App\Models\CompanySetting::firstOrCreate(
@@ -169,5 +186,16 @@ class DatabaseSeeder extends Seeder
         $this->command->info('✓ Asset categories and sample assets created');
         $this->command->info('✓ Program budgets created');
         $this->command->info('✓ Sample sales and expenses with journal entries created');
+        
+        $this->command->newLine();
+        $this->command->warn('⚠️  DEFAULT LOGIN CREDENTIALS:');
+        $this->command->table(
+            ['Email', 'Password', 'Role'],
+            [
+                ['admin@codeacademy.ug', 'password', 'admin'],
+                ['accountant@codeacademy.ug', 'password', 'accountant'],
+            ]
+        );
+        $this->command->warn('⚠️  IMPORTANT: Change these passwords after first login!');
     }
 }

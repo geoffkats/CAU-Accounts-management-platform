@@ -100,6 +100,14 @@ new class extends Component {
 
     <!-- Filters -->
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+        @if($status === 'all')
+        <div class="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <p class="text-sm text-blue-800 dark:text-blue-300">
+                <strong>Note:</strong> Showing all entries including voided ones. Voided entries (marked with strikethrough) are excluded from all financial reports and balance calculations. 
+                They represent historical records that have been replaced or corrected.
+            </p>
+        </div>
+        @endif
         <div class="grid grid-cols-1 md:grid-cols-7 gap-4">
             <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Search</label>
@@ -175,16 +183,19 @@ new class extends Component {
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse($entries as $entry)
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors {{ $entry->status === 'void' ? 'opacity-50 bg-gray-50 dark:bg-gray-900/20' : '' }}">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400 {{ $entry->status === 'void' ? 'line-through' : '' }}">
                             {{ $entry->date->format('M d, Y') }}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
-                            <span class="text-sm font-mono font-bold text-gray-900 dark:text-white">
+                            <span class="text-sm font-mono font-bold text-gray-900 dark:text-white {{ $entry->status === 'void' ? 'line-through' : '' }}">
                                 {{ $entry->reference }}
                             </span>
                             @if(!$entry->isBalanced())
                                 <span title="Entry not balanced" class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">Imbalance</span>
+                            @endif
+                            @if($entry->replaces_entry_id)
+                                <span title="Replaces entry #{{ $entry->replaces_entry_id }}" class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">Replacement</span>
                             @endif
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">

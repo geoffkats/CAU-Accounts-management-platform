@@ -58,7 +58,7 @@ new class extends Component {
     {
         $range = $this->getPeriodRange();
 
-        $query = Sale::with(['program', 'customer', 'account'])
+        $query = Sale::posting()->with(['program', 'customer', 'account'])
             ->when($this->search, function ($q) {
                 $q->where('invoice_number', 'like', '%' . $this->search . '%')
                   ->orWhereHas('customer', function ($q) {
@@ -77,8 +77,9 @@ new class extends Component {
             ->whereBetween('sale_date', [$range['start'], $range['end']])
             ->latest('sale_date');
 
-        // Calculate totals - need to handle base currency conversion properly
-        $allSales = Sale::when($this->search, function ($q) {
+        // Calculate totals - only for posting documents (Invoices/Till Sales)
+        $allSales = Sale::posting()
+            ->when($this->search, function ($q) {
                 $q->where('invoice_number', 'like', '%' . $this->search . '%')
                   ->orWhereHas('customer', function ($q) {
                       $q->where('name', 'like', '%' . $this->search . '%');

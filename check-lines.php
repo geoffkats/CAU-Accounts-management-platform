@@ -35,4 +35,5 @@ foreach ($journals as $j) {
         }
     }
     echo "\n";
+
 }

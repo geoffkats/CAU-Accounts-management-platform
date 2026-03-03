@@ -35,7 +35,7 @@ class RebuildJournalEntries extends Command
 
     private function rebuildExpenseEntries()
     {
-        $expenses = Expense::has('journalEntry')->get();
+        $expenses = Expense::all();
 
         $this->info("Rebuilding journal entries for {$expenses->count()} expenses...");
         $bar = $this->output->createProgressBar($expenses->count());
@@ -43,19 +43,24 @@ class RebuildJournalEntries extends Command
 
         foreach ($expenses as $expense) {
             try {
-                // Find and void the existing entry
-                $entry = JournalEntry::where('expense_id', $expense->id)->latest('id')->first();
-                $oldId = $entry?->id;
+                // Find and void ALL existing accrual entries (type 'expense') for this record
+                // This ensures we don't leave duplicates if multiple existed
+                $entries = JournalEntry::where('expense_id', $expense->id)
+                    ->where('type', 'expense')
+                    ->where('status', '!=', 'void')
+                    ->get();
 
-                if ($entry) {
+                $replacesId = null;
+                foreach ($entries as $entry) {
+                    $replacesId = $entry->id;
                     $entry->void();
                 }
 
-                // Create new entry with correct base currency amounts
+                // Create new entry with correct logic
                 $newEntry = $expense->createJournalEntry();
 
-                if ($oldId) {
-                    $newEntry->update(['replaces_entry_id' => $oldId]);
+                if ($replacesId) {
+                    $newEntry->update(['replaces_entry_id' => $replacesId]);
                 }
             } catch (\Exception $e) {
                 $this->warn("\nFailed to rebuild entry for expense #{$expense->id}: " . $e->getMessage());
@@ -70,7 +75,7 @@ class RebuildJournalEntries extends Command
 
     private function rebuildSaleEntries()
     {
-        $sales = Sale::has('journalEntry')->get();
+        $sales = Sale::all();
 
         $this->info("Rebuilding journal entries for {$sales->count()} sales...");
         $bar = $this->output->createProgressBar($sales->count());
@@ -78,22 +83,24 @@ class RebuildJournalEntries extends Command
 
         foreach ($sales as $sale) {
             try {
-                // Find and void the existing entry
-                $entry = JournalEntry::where('sales_id', $sale->id)
-                    ->orWhere('income_id', $sale->id)
-                    ->latest('id')
-                    ->first();
-                $oldId = $entry?->id;
+                // Find and void ALL existing income entries (type 'income') for this record
+                $entries = JournalEntry::where('sales_id', $sale->id)
+                    ->where('type', 'income')
+                    ->where('status', '!=', 'void')
+                    ->get();
 
-                if ($entry) {
+                $replacesId = null;
+                foreach ($entries as $entry) {
+                    $replacesId = $entry->id;
                     $entry->void();
                 }
 
-                // Create new entry with correct base currency amounts
-                $newEntry = $sale->createJournalEntry();
-
-                if ($oldId) {
-                    $newEntry->update(['replaces_entry_id' => $oldId]);
+                // Create new entry with correct logic
+                if ($sale->postsToLedger()) {
+                    $newEntry = $sale->createJournalEntry();
+                    if ($replacesId) {
+                        $newEntry->update(['replaces_entry_id' => $replacesId]);
+                    }
                 }
             } catch (\Exception $e) {
                 $this->warn("\nFailed to rebuild entry for sale #{$sale->id}: " . $e->getMessage());

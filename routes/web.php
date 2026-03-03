@@ -5,7 +5,11 @@ use Laravel\Fortify\Features;
 use Livewire\Volt\Volt;
 
 Route::get('/', function () {
-    return view('welcome');
+    // Redirect to login if not authenticated, otherwise to dashboard
+    if (auth()->check()) {
+        return redirect()->route('dashboard');
+    }
+    return redirect()->route('login');
 })->name('home');
 
 Volt::route('dashboard', 'dashboard')

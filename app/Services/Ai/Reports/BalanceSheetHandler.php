@@ -19,8 +19,17 @@ class BalanceSheetHandler implements ReportHandlerInterface
         $nonCurrentAssets = \App\Models\Asset::Active()->sum('current_book_value');
 
         // 2. Current Assets
-        // Receivables: Unpaid Invoices
-        $receivables = Sale::where('status', '!=', 'paid')->sum('amount_base') ?: Sale::where('status', '!=', 'paid')->sum('amount');
+        // Receivables: Unpaid Invoices (Remaining balances of posting documents)
+        $receivables = Sale::posting()
+            ->where('status', '!=', Sale::STATUS_PAID)
+            ->get()
+            ->sum(function($sale) {
+                $rem = (float) $sale->remaining_balance;
+                if ($sale->amount > 0 && $sale->amount_base) {
+                    return $rem * ($sale->amount_base / $sale->amount);
+                }
+                return $rem;
+            });
         
         // This is a simplified "synthetic" cash calculation for the AI context
         // In a real system, this would come from a proper Ledger query on the Cash account

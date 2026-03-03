@@ -17,20 +17,25 @@ class TrialBalanceHandler implements ReportHandlerInterface
         // 1. Assets
         $assetsValue = Asset::Active()->sum('current_book_value');
         
-        // 2. Expenses
-        $totalExpenses = Expense::sum('amount_base') ?: Expense::sum('amount');
-        $totalCharges = Expense::sum('charges');
-        $expensesValue = $totalExpenses + $totalCharges;
+        // 2. Expenses (amount_base already includes charges)
+        $expensesValue = Expense::sum('amount_base') ?: Expense::sum('amount');
         
         // CREDIT BALANCES
-        // 3. Revenue (Sales)
-        $revenueValue = Sale::sum('amount_base') ?: Sale::sum('amount');
+        // 3. Revenue (Sales from posting documents only)
+        $revenueValue = Sale::posting()->get()->sum(function($sale) {
+            return $sale->amount_base ?? $sale->amount;
+        });
         
-        // 4. Liabilities (Payables from Expenses)
-        // In a simple system, unpaid expenses are payables
-        // However, for Trial Balance, we usually show Expense (Dr) and Accounts Payable (Cr)
-        // Let's approximate based on unpaid status
-        $payablesValue = Expense::where('status', '!=', 'paid')->sum('amount_base') ?: Expense::where('status', '!=', 'paid')->sum('amount');
+        // 4. Liabilities (Payables from Expenses - Outstanding balances)
+        $payablesValue = Expense::all()->sum(function($exp) {
+            $rem = (float) $exp->outstanding_balance;
+            if ($exp->amount > 0 && $exp->amount_base) {
+                // If amount_base includes charges, convert remaining balance proportionally
+                // Outstanding balance already includes charges in Expense model
+                return $rem * ($exp->amount_base / ($exp->amount + ($exp->charges ?? 0)));
+            }
+            return $rem;
+        });
         
         // 5. Equity (Retained Earnings)
         // Equity = Assets - Liabilities

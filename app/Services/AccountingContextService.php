@@ -36,29 +36,30 @@ class AccountingContextService
             ],
 
             'flags' => [
-                'unpaid_invoices_count' => Sale::where('status', '!=', 'paid')->count(),
-                'unpaid_invoices_amount' => Sale::where('status', '!=', 'paid')->sum('amount'),
+                'unpaid_invoices_count' => Sale::posting()->where('status', '!=', Sale::STATUS_PAID)->count(),
+                'unpaid_invoices_amount' => Sale::posting()->get()->sum('remaining_balance'),
                 'pending_expenses_count' => Expense::where('status', '!=', 'paid')->count(),
-                'pending_expenses_amount' => Expense::sum('amount') + Expense::sum('charges') - Payment::sum('amount'),
+                'pending_expenses_amount' => Expense::get()->sum('outstanding_balance'),
             ]
         ];
     }
 
     protected function incomeTotal()
     {
-        return Sale::sum('amount_base') ?: Sale::sum('amount');
+        return Sale::posting()->get()->sum(function($sale) {
+            return $sale->amount_base ?? $sale->amount;
+        });
     }
 
     protected function expenseTotal()
     {
-        $expenses = Expense::sum('amount_base') ?: Expense::sum('amount');
-        $charges = Expense::sum('charges');
-        return $expenses + $charges;
+        // amount_base already includes charges
+        return Expense::sum('amount_base') ?: Expense::sum('amount');
     }
 
     protected function profit()
     {
-        return $this->incomeTotal() - $this->expenseTotal();
+        return (float) $this->incomeTotal() - (float) $this->expenseTotal();
     }
 
     protected function profitMargin()
@@ -89,17 +90,18 @@ class AccountingContextService
     public function getProgramSummary()
     {
         return Program::all()->map(function ($program) {
-            $sales = Sale::where('program_id', $program->id)->sum('amount_base') ?: Sale::where('program_id', $program->id)->sum('amount');
-            $expenses = Expense::where('program_id', $program->id)->sum('amount_base') ?: Expense::where('program_id', $program->id)->sum('amount');
-            $charges = Expense::where('program_id', $program->id)->sum('charges');
-            $totalExpenses = $expenses + $charges;
+            $sales = Sale::posting()->where('program_id', $program->id)->get()->sum(function($sale) {
+                return $sale->amount_base ?? $sale->amount;
+            });
+            // amount_base already includes charges
+            $totalExpenses = Expense::where('program_id', $program->id)->sum('amount_base') ?: Expense::where('program_id', $program->id)->sum('amount');
             
             return [
                 'name' => $program->name,
                 'status' => $program->status,
-                'sales' => $sales,
-                'expenses' => $totalExpenses,
-                'profit' => $sales - $totalExpenses,
+                'sales' => (float) $sales,
+                'expenses' => (float) $totalExpenses,
+                'profit' => (float) ($sales - $totalExpenses),
                 'margin' => $sales > 0 ? (($sales - $totalExpenses) / $sales) * 100 : 0,
             ];
         })->toArray();
