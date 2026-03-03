@@ -70,6 +70,8 @@ class Expense extends Model
             self::STATUS_CANCELLED => 'Cancelled',
         ];
     }
+
+    public static function getCategories(): array
     {
         return [
             self::CATEGORY_SALARIES => 'Salaries & Wages',
